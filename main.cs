@@ -10,7 +10,7 @@ namespace SimpleCrawler
 		static void Main(string[] args)
 		{
 			//Local Variables
-			int hasTraversed = 0;										//Number of times the program has crawled.
+			int hasTraversed = -1;										//Number of times the program has crawled. Starts at -1 because will go to 0 with inital website.
 			string address = null;										//Full address of a URL.
 			string addressModifier = null;							//The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
 			int numHops = -1;												//The number of hops we are allowed by the user.
@@ -18,8 +18,6 @@ namespace SimpleCrawler
 			bool goodAddressFound = false;							//Used for when we have found the next good address in our crawl.
 			bool foundTLD = false;                             //This is used to indicate when we are nearing the end of the base URL. Becomes true when we have found a TLD
 																				//(.com, .org, ect), otherwise false.
-			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
-
 
 			//Attempt to assign address to the given argument.
 			try { address = args[0]; } //The number  of hops our crawler will make at most.
@@ -43,6 +41,9 @@ namespace SimpleCrawler
 			//Logic to traverse.
 			while (hasTraversed < numHops)
 			{
+				//This needs to be here because we can only use each client once, it cannot be modified once called. Therefore every loop we need a new one.
+				var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
+
 				//Process the address given to extract base address and modifier
 				foundTLD = false;
 				for (int i = 0; i < address.Length; i++)
@@ -59,11 +60,12 @@ namespace SimpleCrawler
 				visitedWebsites.Add(address);
 
 				//This adds one to the URL since we crawled one.
-				numHops++;
+				hasTraversed++;
 
             client.BaseAddress = new Uri(address);
             HttpResponseMessage response = client.GetAsync(addressModifier).Result;
             response.EnsureSuccessStatusCode();
+				Console.WriteLine(hasTraversed);
 				Console.WriteLine(address + addressModifier);
 
             //Parse the response of the webpage.
