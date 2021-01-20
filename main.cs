@@ -35,7 +35,8 @@ namespace SimpleCrawler
 			Crawl(address, numHops, visitedWebsites);
 
 			//Print the website results of the recursion.
-			for (int i = 0; i < (visitedWebsites.Count - 1); i++)
+			//Starts at once since we're supposed to only print the hop URLs.
+			for (int i = 1; i < (visitedWebsites.Count - 1); i++)
 			{
 				Console.WriteLine(i + ": " + visitedWebsites[i]);
 			}
@@ -99,26 +100,32 @@ namespace SimpleCrawler
 			try { response.EnsureSuccessStatusCode(); }
 			catch (Exception e)
 			{
-            if (e.Message.Contains("500"))
+				if (e.Message.Contains("500"))
             {
-					//Retry 3 times as the teacher says, I give a 1 second gap for it to try.\
+					//Retry 3 times as the teacher says, I give a 1 second gap for it to try.
 					int i = 0;
-					while (i < 3 && (int)response.StatusCode != 500)
+					while (i < 3 && (int)response.StatusCode == 500)
 					{
 						Thread.Sleep(1000);
 						response = client.GetAsync(addressModifier).Result;
+						i++;
 					}
 				}
 				
 				//If we are here this means that an issue occurred, and since HTTPClient handles 300s this means its a 400, which is simply leave and choose another url.
-            return false;
+				if((int)response.StatusCode != 200)
+				{
+					//This covers the condition that the first given site is bad, meaning we won't have a fallback to explore, thus visitedWebsites does not get populated.
+					if(visitedWebsites.Count == 0) { visitedWebsites.Add(response.Content.ReadAsStringAsync().Result); }
+					return false;
+				}
 			}
+
+			//Add to the list of websites we've found.
+			visitedWebsites.Add(address + addressModifier);
 
 			//Parse the response of the webpage.
 			string result = response.Content.ReadAsStringAsync().Result;
-
-			//Since we're commited to this URL now, add to the list we've found.
-			visitedWebsites.Add(address + addressModifier);
 
 			//This line goes through every character of the string, and removes spaces and new lines.
 			for (int i = 0; i < result.Length; i++) { if (result[i] == ' ' || result[i] == '\n') { result = result.Remove(i, 1); } }
@@ -132,7 +139,9 @@ namespace SimpleCrawler
 					result = result.Substring(result.IndexOf("ahref"));
 
 					//extract potential URL
-					address = result.Split('\"')[1]; //According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
+					try { address = result.Split('\"')[1]; }	//According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
+																			//This should work, but in the case that it doesn't due to something weird, don't want the program to die.
+					catch (Exception e) { }
 
 					//Clean up result in case we need another pass.
 					result = result.Remove(0, 5); //Removes ahref.
