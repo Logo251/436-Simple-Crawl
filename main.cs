@@ -10,14 +10,9 @@ namespace SimpleCrawler
 		static void Main(string[] args)
 		{
 			//Local Variables
-			int hasTraversed = -1;										//Number of times the program has crawled. Starts at -1 because will go to 0 with inital website.
 			string address = null;										//Full address of a URL.
-			string addressModifier = null;							//The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
 			int numHops = -1;												//The number of hops we are allowed by the user.
 			List<string> visitedWebsites = new List<string>(); //Used to store the links we made.
-			bool goodAddressFound = false;							//Used for when we have found the next good address in our crawl.
-			bool foundTLD = false;                             //This is used to indicate when we are nearing the end of the base URL. Becomes true when we have found a TLD
-																				//(.com, .org, ect), otherwise false.
 
 			//Attempt to assign address to the given argument.
 			try { address = args[0]; } //The number  of hops our crawler will make at most.
@@ -35,75 +30,108 @@ namespace SimpleCrawler
 				return; //Turn off the program since we have bad input, no reason to continue.
 			}
 
+			//Start the recursion.
+			Crawl(address, numHops, visitedWebsites);
+
+			//Print the results of the recursion.
+			for(int i = 0; i < visitedWebsites.Count; i++)
+         {
+				Console.WriteLine(i + ": " + visitedWebsites[i]);
+         }
+			Console.ReadKey();
+		}
+
+      private static bool Crawl(string address, int numHops, List<string> visitedWebsites)
+      {
+			//Local Variables
+			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
+			string addressModifier = null;	//The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
+			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion.
+			bool foundTLD = false;           //This is used to indicate when we are nearing the end of the base URL. Becomes true when we have found a TLD
+														//(.com, .org, ect), otherwise false.
+
+			//If we've hopped the sufficient amount then exit.
+			if (visitedWebsites.Count > numHops) { return true; }
+
 			//Remove the trailing '/' from the inital address following code requirements.
-			if (address.EndsWith("/")) { address = address.Remove(address.Length); }
+			if (address.EndsWith("/")) { address = address.Remove(address.Length - 1); } //-1 since starts at 0.
 
-			//Logic to traverse.
-			while (hasTraversed < numHops)
+			//Check if this address has already been visited. If it has, we can skip this and go back a recursion.
+			//This should not be much more inefficient than Compare() because it checks through each item to my knowledge.
+			for (int i = 0; i < visitedWebsites.Count; i++)
 			{
-				//This needs to be here because we can only use each client once, it cannot be modified once called. Therefore every loop we need a new one.
-				var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
-
-				//Process the address given to extract base address and modifier
-				foundTLD = false;
-				for (int i = 0; i < address.Length; i++)
+				//the remove is used to remove the inital http/https to ensure we don't visit the same site twice.
+				visitedWebsites[i].TrimStart('h', 't', 't', 'p', 's');
+				if (visitedWebsites[i].TrimStart('h', 't', 'p', 's') == address.TrimStart('h', 't', 'p', 's')) { return false; }
+			}
+			
+			//Process the address given to extract base address and modifier for the client.
+			foundTLD = false;
+			for (int i = 0; i < address.Length; i++)
+			{
+				if (address[i] == '.') { foundTLD = true; }
+				if (foundTLD == true && address[i] == '/')   //This triggers when we found the / ending the base url, such as the / in "google.com/"
 				{
-					if (address[i] == '.') { foundTLD = true; }
-					if (foundTLD == true && address[i] == '/')   //This triggers when we found the / ending the base url, such as the / in "google.com/"
+					addressModifier = address.Substring(i, address.Length - i); //Remove the modifier component of the base url.
+					address = address.Substring(0, i); //Set address to be the base url component, for example "http://google.com".
+				}
+			}
+
+			//Take the given address and access it.
+			client.BaseAddress = new Uri(address);
+			HttpResponseMessage response = client.GetAsync(addressModifier).Result;
+			response.EnsureSuccessStatusCode();
+
+			//Parse the response of the webpage.
+			string result = response.Content.ReadAsStringAsync().Result;
+
+			//Since we're commited to this URL now, add to the list we've found.
+			visitedWebsites.Add(address + addressModifier);
+
+			//This line goes through every character of the string, and removes spaces and new lines.
+			for (int i = 0; i < result.Length; i++) { if (i == ' ' || i == '\n') { result.Remove(i, 1); } }
+
+			//Start breaking down the response.
+			while (visitedWebsites.Count <= numHops && lowerLevel == false)
+			{
+				//Cut the website results down to the current first href.
+				if (result.Contains("href"))
+				{
+					result = result.Substring(result.IndexOf("href"));
+
+					//extract potential URL
+					address = result.Split('\"')[1]; //According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
+
+					//Clean up result in case we need another pass.
+					result = result.Remove(0, 4); //Removes href.
+
+					//Check if address is a real one.
+					if (address.Length > 4 && address.Substring(0, 4).Contains("http")) //According to requirements we only need to evaluate hrefs with references to absolute urls that have http or https.
 					{
-						addressModifier = address.Substring(i, address.Length - i); //Remove the modifier component of the base url.
-						address = address.Substring(0, i); //Set address to be the base url component, for example "http://google.com".
+
+						//Check if this URL works.
+						if (checkAddress(address))
+						{
+							lowerLevel = (Crawl(address, numHops, visitedWebsites));
+						}
 					}
 				}
-
-				//Add the URL to the list we've visited.
-				visitedWebsites.Add(address);
-
-				//This adds one to the URL since we crawled one.
-				hasTraversed++;
-
-            client.BaseAddress = new Uri(address);
-            HttpResponseMessage response = client.GetAsync(addressModifier).Result;
-            response.EnsureSuccessStatusCode();
-				Console.WriteLine(hasTraversed);
-				Console.WriteLine(address + addressModifier);
-
-            //Parse the response of the webpage.
-            string result = response.Content.ReadAsStringAsync().Result;
-            result = result.ToLower(); //Set all characters to lower to reduce oddness.
-            for (int i = 0; i < result.Length; i++) { if (i == ' ' || i == '\n') { result.Remove(i, 1); } } //This line goes through every character of the string, and removes spaces and new lines.
-
-				//Find a href
-				goodAddressFound = false;
-				while (goodAddressFound == false)
-				{
-					//Cut the website results down to the first href.
-					result = result.Substring(result.IndexOf("href=\""));
-               {
-						//extract potential URL
-						address = result.Split('\"')[1];
-
-						//Check if address is a real one.
-						if(address != "javascript" && address[0] != '#')
-                  {
-							//Add http to attempt to make an invalid url valid to httpclient.
-							if (!result.Contains("http")) { address = "http://" + address; }
-
-							//Check if this URL works.
-							Uri testURI = new Uri(address);
-							if(testURI.IsWellFormedOriginalString() == true)
-							{
-								if (address.EndsWith("/")) { address = address.Remove(address.Length); } //Removes trailing '/' according to requirements.
-								if (!visitedWebsites.Contains(address))
-								{
-									goodAddressFound = true;
-								}
-							}
-							//If this is not true the loop starts again, which cuts another substring and processes it.
-                  }
-               }
+				else //At this point there's no hrefs left and we need to break loop.
+            {
+					lowerLevel = true;
             }
 			}
+			return lowerLevel;
 		}
-	}
+
+      private static bool checkAddress(string address)
+      {
+			Uri testURI = new Uri(address);
+			if (testURI.IsWellFormedOriginalString() == true)
+			{
+				return true;
+			}
+			return false;
+		}
+   }
 }
