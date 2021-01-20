@@ -1,17 +1,18 @@
-﻿using System;				//Used for console out.
-using System.Net;			
-using System.Net.Http;  //Used for httpclient.
-using System.Collections.Generic;
+﻿using System;								//Used for console out.
+using System.Net;							//Used for network components to aid httpClient.
+using System.Net.Http;					//Used for httpClient.
+using System.Collections.Generic;	//Used for list.
+using System.Threading;					//Used for sleep.
 
 namespace SimpleCrawler
 {
-   class mainClass
+	class mainClass
 	{
 		static void Main(string[] args)
 		{
 			//Local Variables
-			string address = null;										//Full address of a URL.
-			int numHops = -1;												//The number of hops we are allowed by the user.
+			string address = null;                             //Full address of a URL.
+			int numHops = -1;                                  //The number of hops we are allowed by the user.
 			List<string> visitedWebsites = new List<string>(); //Used to store the links we made.
 
 			//Attempt to assign address to the given argument.
@@ -33,25 +34,30 @@ namespace SimpleCrawler
 			//Start the recursion.
 			Crawl(address, numHops, visitedWebsites);
 
-			//Print the results of the recursion.
-			for(int i = 0; i < visitedWebsites.Count; i++)
-         {
+			//Print the website results of the recursion.
+			for (int i = 0; i < (visitedWebsites.Count - 1); i++)
+			{
 				Console.WriteLine(i + ": " + visitedWebsites[i]);
-         }
+			}
+			//Print the HTML page.
+			Console.WriteLine(visitedWebsites[visitedWebsites.Count - 1]);
+
+			if (visitedWebsites.Count == 0)
+			{
+				Console.WriteLine("The inital link given was invalid and therefore could not be expanded upon.");
+			}
 			Console.ReadKey();
 		}
 
-      private static bool Crawl(string address, int numHops, List<string> visitedWebsites)
-      {
+		private static bool Crawl(string address, int numHops, List<string> visitedWebsites)
+		{
 			//Local Variables
 			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
-			string addressModifier = null;	//The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
-			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion.
+			string addressModifier = null;   //The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
+			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion based on errors.
+														//If we need to exit before we've visited all the websites it returns true.
 			bool foundTLD = false;           //This is used to indicate when we are nearing the end of the base URL. Becomes true when we have found a TLD
 														//(.com, .org, ect), otherwise false.
-
-			//If we've hopped the sufficient amount then exit.
-			if (visitedWebsites.Count > numHops) { return true; }
 
 			//Remove the trailing '/' from the inital address following code requirements.
 			if (address.EndsWith("/")) { address = address.Remove(address.Length - 1); } //-1 since starts at 0.
@@ -61,10 +67,9 @@ namespace SimpleCrawler
 			for (int i = 0; i < visitedWebsites.Count; i++)
 			{
 				//the remove is used to remove the inital http/https to ensure we don't visit the same site twice.
-				visitedWebsites[i].TrimStart('h', 't', 't', 'p', 's');
 				if (visitedWebsites[i].TrimStart('h', 't', 'p', 's') == address.TrimStart('h', 't', 'p', 's')) { return false; }
 			}
-			
+
 			//Process the address given to extract base address and modifier for the client.
 			foundTLD = false;
 			for (int i = 0; i < address.Length; i++)
@@ -78,9 +83,36 @@ namespace SimpleCrawler
 			}
 
 			//Take the given address and access it.
-			client.BaseAddress = new Uri(address);
+			try { client.BaseAddress = new Uri(address); }
+			catch (Exception e)
+			{
+				return false;
+			}
+
+			//Attempt to ensure no bad links made it through.
+			if (!client.BaseAddress.IsWellFormedOriginalString()) { return false; }
+
+			//Create the client.
 			HttpResponseMessage response = client.GetAsync(addressModifier).Result;
-			response.EnsureSuccessStatusCode();
+
+			//Deal with error codes to ensure the link is good. 
+			try { response.EnsureSuccessStatusCode(); }
+			catch (Exception e)
+			{
+            if (e.Message.Contains("500"))
+            {
+					//Retry 3 times as the teacher says, I give a 1 second gap for it to try.\
+					int i = 0;
+					while (i < 3 && (int)response.StatusCode != 500)
+					{
+						Thread.Sleep(1000);
+						response = client.GetAsync(addressModifier).Result;
+					}
+				}
+				
+				//If we are here this means that an issue occurred, and since HTTPClient handles 300s this means its a 400, which is simply leave and choose another url.
+            return false;
+			}
 
 			//Parse the response of the webpage.
 			string result = response.Content.ReadAsStringAsync().Result;
@@ -89,49 +121,44 @@ namespace SimpleCrawler
 			visitedWebsites.Add(address + addressModifier);
 
 			//This line goes through every character of the string, and removes spaces and new lines.
-			for (int i = 0; i < result.Length; i++) { if (i == ' ' || i == '\n') { result.Remove(i, 1); } }
+			for (int i = 0; i < result.Length; i++) { if (result[i] == ' ' || result[i] == '\n') { result = result.Remove(i, 1); } }
 
 			//Start breaking down the response.
 			while (visitedWebsites.Count <= numHops && lowerLevel == false)
 			{
 				//Cut the website results down to the current first href.
-				if (result.Contains("href"))
+				if (result.Contains("ahref"))
 				{
-					result = result.Substring(result.IndexOf("href"));
+					result = result.Substring(result.IndexOf("ahref"));
 
 					//extract potential URL
 					address = result.Split('\"')[1]; //According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
 
 					//Clean up result in case we need another pass.
-					result = result.Remove(0, 4); //Removes href.
+					result = result.Remove(0, 5); //Removes ahref.
 
 					//Check if address is a real one.
 					if (address.Length > 4 && address.Substring(0, 4).Contains("http")) //According to requirements we only need to evaluate hrefs with references to absolute urls that have http or https.
 					{
 
-						//Check if this URL works.
-						if (checkAddress(address))
-						{
-							lowerLevel = (Crawl(address, numHops, visitedWebsites));
+						//Start the next level of recursion.
+						lowerLevel = (Crawl(address, numHops, visitedWebsites));
+
+						if(visitedWebsites.Count == numHops + 1) //numhops checks if we have added a site already.
+                  {
+							//This is here since we're at the end of the program and we're supposed to report the last page as text.
+							visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
 						}
 					}
 				}
 				else //At this point there's no hrefs left and we need to break loop.
-            {
+				{
+					//This is here since we've encountered a page without any accessible embedded references.
+					visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
 					lowerLevel = true;
-            }
+				}
 			}
 			return lowerLevel;
 		}
-
-      private static bool checkAddress(string address)
-      {
-			Uri testURI = new Uri(address);
-			if (testURI.IsWellFormedOriginalString() == true)
-			{
-				return true;
-			}
-			return false;
-		}
-   }
+	}
 }
