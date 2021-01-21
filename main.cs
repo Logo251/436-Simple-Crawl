@@ -90,9 +90,6 @@ namespace SimpleCrawler
 				return false;
 			}
 
-			//Attempt to ensure no bad links made it through.
-			if (!client.BaseAddress.IsWellFormedOriginalString()) { return false; }
-
 			//Create the client.
 			HttpResponseMessage response = client.GetAsync(addressModifier).Result;
 
@@ -116,7 +113,8 @@ namespace SimpleCrawler
 				if((int)response.StatusCode != 200)
 				{
 					//This covers the condition that the first given site is bad, meaning we won't have a fallback to explore, thus visitedWebsites does not get populated.
-					if(visitedWebsites.Count == 0) { visitedWebsites.Add(response.Content.ReadAsStringAsync().Result); }
+					if(visitedWebsites.Count == 0) {
+						visitedWebsites.Add(response.Content.ReadAsStringAsync().Result); }
 					return false;
 				}
 			}
@@ -127,16 +125,13 @@ namespace SimpleCrawler
 			//Parse the response of the webpage.
 			string result = response.Content.ReadAsStringAsync().Result;
 
-			//This line goes through every character of the string, and removes spaces and new lines.
-			for (int i = 0; i < result.Length; i++) { if (result[i] == ' ' || result[i] == '\n') { result = result.Remove(i, 1); } }
-
-			//Start breaking down the response.
-			while (visitedWebsites.Count <= numHops && lowerLevel == false)
+         //Start breaking down the response.
+         while (visitedWebsites.Count <= numHops && lowerLevel == false)
 			{
-				//Cut the website results down to the current first href.
-				if (result.Contains("ahref"))
+				//Cut the website results down to the current first a href.
+				if (result.Contains("a href"))
 				{
-					result = result.Substring(result.IndexOf("ahref"));
+					result = result.Substring(result.IndexOf("a href"));
 
 					//extract potential URL
 					try { address = result.Split('\"')[1]; }	//According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
@@ -155,8 +150,8 @@ namespace SimpleCrawler
 
 						if(visitedWebsites.Count == numHops + 1) //numhops checks if we have added a site already.
                   {
-							//This is here since we're at the end of the program and we're supposed to report the last page as text.
-							visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
+                     //This is here since we're at the end of the program and we're supposed to report the last page as text.
+                     visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
 						}
 					}
 				}
