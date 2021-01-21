@@ -46,14 +46,12 @@ namespace SimpleCrawler
 				Console.WriteLine("The inital link given was invalid or went somewhere invalid and therefore could not be expanded upon.");
 			}
 			else { Console.WriteLine(visitedWebsites[visitedWebsites.Count - 1]); }
-			Console.ReadKey();
 		}
 
 		private static bool Crawl(string address, int numHops, List<string> visitedWebsites)
 		{
 			//Local Variables
 			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
-			HttpResponseMessage response;
 			string addressModifier = null;   //The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
 			string stringStorage;				//Used to store a string temporarily.
 			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion based on errors.
@@ -69,6 +67,8 @@ namespace SimpleCrawler
 			for (int i = 0; i < visitedWebsites.Count; i++)
 			{
 				//the remove is used to remove the inital http/https to ensure we don't visit the same site twice.
+				//Requirements do not state if we should treat http and https as the same, I do not since we could potentially loop
+				//and it does not achieve the goal of a crawler, going in circles.
 				if (visitedWebsites[i].TrimStart('h', 't', 'p', 's') == address.TrimStart('h', 't', 'p', 's')) { return false; }
 			}
 
@@ -98,13 +98,14 @@ namespace SimpleCrawler
 
 			//Create the client.
 			//This can break if, for example, the website refuses the connection. This treats it as if it was just a dead site.
-			try {response = client.GetAsync(addressModifier).Result; }
+			HttpResponseMessage response = null;
+			try { response = client.GetAsync(addressModifier).Result; }
 			catch (Exception e)
          {
 				return false;
          }
 
-			//Deal with error codes to ensure the link is good. 
+			//Deal with error codes to ensure the link is good.
 			try { response.EnsureSuccessStatusCode(); }
 			catch (Exception e)
 			{
@@ -123,9 +124,6 @@ namespace SimpleCrawler
 				//If we are here this means that an issue occurred, and since HTTPClient handles 300s this means its a 400, which is simply leave and choose another url.
 				if((int)response.StatusCode != 200)
 				{
-					//This covers the condition that the first given site is bad, meaning we won't have a fallback to explore, thus visitedWebsites does not get populated.
-					if(visitedWebsites.Count == 0) {
-						visitedWebsites.Add(response.Content.ReadAsStringAsync().Result); }
 					return false;
 				}
 			}
