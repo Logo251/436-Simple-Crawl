@@ -88,6 +88,11 @@ namespace SimpleCrawler
 			try { client.BaseAddress = new Uri(address); }
 			catch (Exception e)
 			{
+				//This tells us we are in the inital recursion, and if we are here this means that the given address is bad.
+				if (visitedWebsites.Count == 0)
+            {
+					visitedWebsites.Add("Bad inital URL.");
+            }
 				return false;
 			}
 
