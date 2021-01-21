@@ -41,12 +41,11 @@ namespace SimpleCrawler
 				Console.WriteLine(i + ": " + visitedWebsites[i]);
 			}
 			//Print the HTML page.
-			Console.WriteLine(visitedWebsites[visitedWebsites.Count - 1]);
-
 			if (visitedWebsites.Count == 0)
 			{
-				Console.WriteLine("The inital link given was invalid and therefore could not be expanded upon.");
+				Console.WriteLine("The inital link given was invalid or went somewhere invalid and therefore could not be expanded upon.");
 			}
+			else { Console.WriteLine(visitedWebsites[visitedWebsites.Count - 1]); }
 			Console.ReadKey();
 		}
 
@@ -54,6 +53,7 @@ namespace SimpleCrawler
 		{
 			//Local Variables
 			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
+			HttpResponseMessage response;
 			string addressModifier = null;   //The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
 			string stringStorage;				//Used to store a string temporarily.
 			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion based on errors.
@@ -97,7 +97,12 @@ namespace SimpleCrawler
 			}
 
 			//Create the client.
-			HttpResponseMessage response = client.GetAsync(addressModifier).Result;
+			//This can break if, for example, the website refuses the connection. This treats it as if it was just a dead site.
+			try {response = client.GetAsync(addressModifier).Result; }
+			catch (Exception e)
+         {
+				return false;
+         }
 
 			//Deal with error codes to ensure the link is good. 
 			try { response.EnsureSuccessStatusCode(); }
