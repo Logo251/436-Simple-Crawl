@@ -55,6 +55,7 @@ namespace SimpleCrawler
 			//Local Variables
 			var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }); //The HTTPClient we are using.
 			string addressModifier = null;   //The modifier in a URL, would be "/hello/" would be a modifier in "http://test.com/hello/").
+			string stringStorage;				//Used to store a string temporarily.
 			bool lowerLevel = false;         //This is used to store the lower level of recursion's signal to exit recursion based on errors.
 														//If we need to exit before we've visited all the websites it returns true.
 			bool foundTLD = false;           //This is used to indicate when we are nearing the end of the base URL. Becomes true when we have found a TLD
@@ -129,29 +130,38 @@ namespace SimpleCrawler
          while (visitedWebsites.Count <= numHops && lowerLevel == false)
 			{
 				//Cut the website results down to the current first a href.
-				if (result.Contains("a href"))
+				if (result.Contains("<a") && result.Contains("href=") && result.Contains(">"))
 				{
-					result = result.Substring(result.IndexOf("a href"));
+					//cut to the first <a
+					result = result.Remove(0, result.IndexOf("<a"));
 
-					//extract potential URL
-					try { address = result.Split('\"')[1]; }	//According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
-																			//This should work, but in the case that it doesn't due to something weird, don't want the program to die.
-					catch (Exception e) { }
+					//Find the other end of the tag.
+					stringStorage = result.Substring(0, result.IndexOf('>'));
 
 					//Clean up result in case we need another pass.
-					result = result.Remove(0, 5); //Removes ahref.
+					result = result.Remove(0, result.IndexOf('>')); //Removes ahref.
 
-					//Check if address is a real one.
-					if (address.Length > 4 && address.Substring(0, 4).Contains("http")) //According to requirements we only need to evaluate hrefs with references to absolute urls that have http or https.
+					if (stringStorage.Contains("href="))
 					{
+						stringStorage = stringStorage.Substring(stringStorage.IndexOf("href="), stringStorage.Length - stringStorage.IndexOf("href=") - 1);
 
-						//Start the next level of recursion.
-						lowerLevel = (Crawl(address, numHops, visitedWebsites));
+						//extract potential URL
+						try { address = stringStorage.Split('\"')[1]; } //According to the reference webpage in the requirements page and what I've seen, the URL is always surrounded by quotes.
+																						//This should work, but in the case that it doesn't due to something weird, don't want the program to die.
+						catch (Exception e) { }
 
-						if(visitedWebsites.Count == numHops + 1) //numhops checks if we have added a site already.
-                  {
-                     //This is here since we're at the end of the program and we're supposed to report the last page as text.
-                     visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
+						//Check if address is a real one.
+						if (address.Length > 4 && address.Substring(0, 4).Contains("http")) //According to requirements we only need to evaluate hrefs with references to absolute urls that have http or https.
+						{
+
+							//Start the next level of recursion.
+							lowerLevel = (Crawl(address, numHops, visitedWebsites));
+
+							if (visitedWebsites.Count == numHops + 1) //numhops checks if we have added a site already.
+							{
+								//This is here since we're at the end of the program and we're supposed to report the last page as text.
+								visitedWebsites.Add(response.Content.ReadAsStringAsync().Result);
+							}
 						}
 					}
 				}
